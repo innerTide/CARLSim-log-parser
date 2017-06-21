@@ -3,8 +3,9 @@
 import math
 import re
 import sys
+import os
 
-SEGMENT_LENGHT_LIMITATION = 4
+SEGMENT_LENGHT_LIMITATION = 32
 
 log_file = open('test.log', mode='r')
 log_str = log_file.read()
@@ -84,8 +85,8 @@ def segmentGroupBuilder():
         else:
             # Check if the length exceed the limitation
             # If the number of PE doesn't exceed, add the node to current seg
-            if (len(segment_group[pair[0]][-1]) < SEGMENT_LENGHT_LIMITATION) or \
-                    (SEGMENT_LENGHT_LIMITATION == 0):
+            if (len(segment_group[pair[0]][-1]) < SEGMENT_LENGHT_LIMITATION)\
+               or (SEGMENT_LENGHT_LIMITATION == 0):
                 segment_group[pair[0]][-1].append(pair[1])
             # If exceeds, build a new segment
             else:
@@ -96,8 +97,10 @@ def segmentGroupBuilder():
 
 # Build the list of segment configurations
 # [(Master place, [Node IDs], [Input config], [Output config])]
+
+
 def segmentConfigurationBuilder():
-    """Return the list of segment configurations"""
+    """Return the list of segment configurations."""
     segment_group = segmentGroupBuilder()
     segment_configuration_list = []
     for master in segment_group:
@@ -120,29 +123,17 @@ def segmentConfigurationBuilder():
                     node_id_list.append(slave_group[i - 1])
                     input_config_list.append(4)
                     output_config_list.append(3)
-            configuration_item = (master, node_id_list,
+            configuration_item = (master_place, node_id_list,
                                   input_config_list, output_config_list)
             segment_configuration_list.append(configuration_item)
 
     return segment_configuration_list
-# Generate input number of nodes
-# Return value is a list of integer
-# The index of the list is corresponding node ID
-
-
-def inputNumberGenerator():
-    """Return the input number of nodes."""
-    connection_pair_list = connectionPairParser()
-    input_number_list = [0 for n in range(neuronNumberParser())]
-    for pair in connection_pair_list:
-        input_number_list[pair[1]] = input_number_list[pair[1]] + 1
-    return input_number_list
 
 
 # Parsing the spiking times
 
 
-def spikingTimeParser(log_str):
+def spikingTimeParser():
     """Return the spiking times of each neuron."""
     first_line_re = '\|\s*[0-9]+\s*\|\s*[0-9]+\.[0-9]+\s*\|([\s]*[0-9]+)+\s+'
     rest_line_re = '(\|\s+\|\s+\|(\s*[0-9]+)+\s+)*'
@@ -160,4 +151,100 @@ def spikingTimeParser(log_str):
 
     return spiking_time
 
+
+# Generate the configuration files
+
+
+def configurationFileGenerator():
+    """Generate four configuration files."""
+    segment_configuration_list = segmentConfigurationBuilder()
+
+    # Step 1: Generate segment configuration
+    segment_conf = open('segment.conf', mode='w+')
+    segment_conf.write("# This is a configuration file of segments\n")
+    segment_conf.write("# Number of segments\n")
+    segment_conf.write("%d\n\n\n" % len(segment_configuration_list))
+    segment_conf.write("# Configuration for each segment\n")
+    segment_conf.write("# Line 1: Segment ID, number of switches\n")
+    segment_conf.write("# Line 2 - Next segment: Switch ID")
+    segment_conf.write(", input and output configuration\n\n")
+    segment_conf.write("# 0 for 000\n")
+    segment_conf.write("# 1 for 001\n")
+    segment_conf.write("# 2 for 010\n")
+    segment_conf.write("# 3 for 011\n")
+    segment_conf.write("# 4 for 100\n")
+    segment_conf.write("# 5 for 101\n")
+    segment_conf.write("# 6 for 110\n")
+    segment_conf.write("# 7 for 111\n")
+    segment_id = 0
+    for item in segment_configuration_list:
+        segment_conf.write("# Segment %d configuration\n" % segment_id)
+        segment_conf.write("%d %d\n" % (segment_id, len(item[1])))
+        segment_id = segment_id + 1
+        for i in range(len(item[1])):
+            segment_conf.write("%d %d %d\n" % (i, item[2][i], item[3][i]))
+        segment_conf.write("\n\n")
+    segment_conf.close()
+
+    # Step 2: Generate master connection file
+    master_connection_conf = open('master_connection.conf', mode='w+')
+    master_connection_conf.write("# This is a configuration file")
+    master_connection_conf.write("of master to segment connections\n")
+    master_connection_conf.write("# Node ID, Segment ID, Switch ID\n")
+    segment_id = 0
+    for item in segment_configuration_list:
+        master_connection_conf.write("%d %d %d\n" % (item[1][item[0]],
+                                                     segment_id,
+                                                     item[0]))
+        segment_id = segment_id + 1
+    master_connection_conf.close()
+
+    # Step 3: Generate slave connection file
+    slave_connection_conf = open('slave_connection.conf', mode='w+')
+    slave_connection_conf.write("# This is a configuration file")
+    slave_connection_conf.write("of slave to segment connections\n")
+    slave_connection_conf.write("# Segment ID, Switch ID, Node ID, Port ID\n")
+    input_port_count = {}
+    segment_id = 0
+    for item in segment_configuration_list:
+        for i in range(len(item[1])):
+            if i != item[0]:
+                if item[1][i] not in input_port_count:
+                    input_port_count[item[1][i]] = 0
+                else:
+                    input_port_count[item[1][i]] += 1
+                slave_connection_conf.write("%d %d %d %d\n" % (segment_id, i,
+                                            item[1][i],
+                                            input_port_count[item[1][i]]))
+        segment_id += 1
+    slave_connection_conf.close()
+
+    # Step 4: Generate PE configuration file
+    pe_conf = open('pe.conf', mode='w+')
+    pe_conf.write("# This is the node configuration file\n\n")
+    pe_conf.write("# Number of nodes\n")
+    pe_conf.write("%d\n\n" % neuronNumberParser())
+    pe_conf.write("# Node configuration\n")
+    pe_conf.write("# Node ID, number of input ports\n")
+    for node_id in range(neuronNumberParser()):
+        if node_id not in input_port_count:
+            pe_conf.write("%d 0\n" % node_id)
+        else:
+            pe_conf.write("%d %d\n" % (node_id,
+                                       (input_port_count[node_id] + 1)))
+    pe_conf.close()
+
+    # Step 5: Generate traffic file
+    spiking_time_table = spikingTimeParser()
+    if not os.path.exists("traffic/"):
+        os.makedirs("traffic/")
+    for node_id in spiking_time_table:
+        file_name = "traffic/" + str(node_id) + ".tr"
+        traffic_file = open(file_name, mode='w+')
+        for t in spiking_time_table[node_id]:
+            traffic_file.write("%d\n" % t)
+        traffic_file.close()
+
+
+configurationFileGenerator()
 log_file.close()

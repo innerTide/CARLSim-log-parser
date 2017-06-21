@@ -1,6 +1,0 @@
-\[\s*[0-9]+,\s*[0-9]+\] : 这个是connection table的
-\|\s*[0-9]+\s*\|\s*[0-9]+\.[0-9]+\s*\|([\s]*[0-9]+)+ : 这个是Spiking Time 的第一行。
-\|\s+\|\s+\|(\s*[0-9]+)+ : 这个是Spiking Time的其余行
-Group\sinput.*\n[^0-9]+[0-9]+ : 这个是input neuron的个数
-Group\soutput.*\n[^0-9]+[0-9]+ ： 这个是output neuron的个数
-(\[\s*[0-9]+,\s*[0-9]+\]\s(([0-9]|\.)+|nan)\s+\n?)+ : connection table的
